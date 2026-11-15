@@ -17,7 +17,7 @@ export type SiteConfig = {
 export type SitePage = 'home' | 'privacy' | 'terms' | 'data-deletion';
 
 /** Shown on the legal pages. Change it whenever their wording changes. */
-const LAST_UPDATED = '15 November 2026';
+const LAST_UPDATED = '14 November 2026';
 
 const DELETION_DAYS = 30;
 
@@ -210,7 +210,6 @@ function privacy(site: SiteConfig): string {
 </ul>
 <p>We ask Spotify only for permission to create and change playlists and to see your private playlists. We use it only to create the SongSnag playlist, to check which songs are already in it, and to add songs to it. We do not look at your other playlists.</p>
 <p><strong>For each reel you send.</strong> We keep a record of the song that was matched, whether it was added, and any error, so the same reel is not processed twice and so problems can be fixed.</p>
-<p><strong>For each reel, whoever sent it.</strong> We keep the reel’s ID and the list of songs it names, so a reel that is sent again does not have to be read again. This list is not linked to you.</p>
 <p><strong>Server logs.</strong> Our server logs the IDs above along with technical details of each request. Our hosting provider may log the IP addresses of visitors to this website.</p>
 <p>This website uses no cookies, analytics or advertising trackers.</p>
 

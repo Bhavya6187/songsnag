@@ -1,8 +1,9 @@
-import type { Store, User } from './db.ts';
+import type { ReelSong, Store, User } from './db.ts';
 import type { SendText } from './instagram/send.ts';
 import type { InboundEvent } from './instagram/webhook.ts';
 import type { Logger } from './log.ts';
 import type { Recognition, RecognizeInput } from './recognize/reel.ts';
+import { reelShortcode } from './reel/download.ts';
 import type { ApiFailure, ApiResult, Spotify, Track } from './spotify/client.ts';
 import { pickTrack, searchQueries } from './spotify/match.ts';
 
@@ -162,21 +163,32 @@ export function createPipeline(deps: PipelineDeps) {
       return fail('spotify token refresh failed', REPLIES.spotifyFailed);
     }
 
-    const recognition = await deps.recognize({ url: reel.url, caption: reel.caption });
-    if (!recognition.ok) {
-      const error = `${recognition.stage} ${recognition.reason}: ${recognition.detail}`;
-      if (recognition.stage === 'download' && recognition.reason === 'restricted') return fail(error, REPLIES.restricted);
-      if (recognition.stage === 'download' && recognition.reason === 'not-found') return fail(error, REPLIES.reelGone);
-      return fail(error, REPLIES.reelFailed);
+    // Reading a reel is the slow, paid part, and a reel names the same songs
+    // whoever sends it. So the answer is kept by the reel's shortcode and
+    // reused. Failures are not kept: the next send tries again.
+    const shortcode = reelShortcode(reel.url);
+    let songs: ReelSong[] | null = shortcode === null ? null : store.getReelSongs(shortcode);
+    if (songs !== null) {
+      log.info('reel songs reused', { mid, shortcode, songs: songs.length });
+    } else {
+      const recognition = await deps.recognize({ url: reel.url, caption: reel.caption });
+      if (!recognition.ok) {
+        const error = `${recognition.stage} ${recognition.reason}: ${recognition.detail}`;
+        if (recognition.stage === 'download' && recognition.reason === 'restricted') return fail(error, REPLIES.restricted);
+        if (recognition.stage === 'download' && recognition.reason === 'not-found') return fail(error, REPLIES.reelGone);
+        return fail(error, REPLIES.reelFailed);
+      }
+      log.info('reel recognised', {
+        mid,
+        songs: recognition.songs.length,
+        used: recognition.used,
+        notes: recognition.notes,
+        usage: recognition.usage ?? null,
+      });
+      songs = recognition.songs.map(({ title, artist }) => ({ title, artist }));
+      if (shortcode !== null) store.saveReelSongs(shortcode, songs);
     }
-    log.info('reel recognised', {
-      mid,
-      songs: recognition.songs.length,
-      used: recognition.used,
-      notes: recognition.notes,
-      usage: recognition.usage ?? null,
-    });
-    if (recognition.songs.length === 0) {
+    if (songs.length === 0) {
       store.setReelStatus(mid, 'done', { matched: [] });
       return reply(igsid, REPLIES.noSongs, mid);
     }
@@ -186,8 +198,7 @@ export function createPipeline(deps: PipelineDeps) {
 
     const outcomes: SongOutcome[] = [];
     const toAdd: string[] = [];
-    for (const { title, artist } of recognition.songs) {
-      const song = { title, artist };
+    for (const song of songs) {
       let outcome: SongOutcome = { song, result: 'not-found' };
       for (const query of searchQueries(song)) {
         const results = await session.call((token) => spotify.searchTracks(token, query));

@@ -83,6 +83,18 @@ test('a message is claimed once, so a retried delivery is recognised', (t) => {
   assert.partialDeepStrictEqual(store.getReel('MID1'), { status: 'done', matched: '[{"a":1}]', error: null });
 });
 
+test('the songs a reel names are kept by its shortcode and outlive the person who sent it', (t) => {
+  const { store } = setup();
+  t.after(() => store.close());
+  assert.equal(store.getReelSongs('abcde'), null);
+  store.saveReelSongs('abcde', [{ title: 'Khushi', artist: null }]);
+  assert.deepEqual(store.getReelSongs('abcde'), [{ title: 'Khushi', artist: null }]);
+  store.saveReelSongs('empty', []);
+  assert.deepEqual(store.getReelSongs('empty'), []);
+  store.deleteUser('IGSID1');
+  assert.deepEqual(store.getReelSongs('abcde'), [{ title: 'Khushi', artist: null }]);
+});
+
 test('a link token works until it is used or expires, and is stored only as a hash', (t) => {
   const { store, clock } = setup();
   t.after(() => store.close());

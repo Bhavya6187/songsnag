@@ -118,6 +118,42 @@ test('a retried delivery of the same message does nothing the second time', asyn
   assert.equal(log.records.some((record) => record.msg === 'duplicate delivery skipped'), true);
 });
 
+const resent = (mid: string) => REEL.replace(REEL_MID, mid);
+
+test('the same reel sent again is not read again: its songs come from the database', async () => {
+  const { api, store, sent, recognition, deliver, log } = setup();
+  await deliver(REEL);
+  recognition.next = recognised(song('Disco Deewane', 'Nazia Hassan'));
+  await deliver(resent('MID_SECOND'));
+
+  assert.equal(recognition.calls.length, 1);
+  assert.deepEqual(store.getReelSongs('SHORTCODE01'), [{ title: 'Khushi', artist: 'Nazia Hassan' }]);
+  assert.deepEqual(api.state.playlist, ['spotify:track:khushi']);
+  assert.equal(sent[1]?.text, 'Already in your playlist:\n• Khushi by Nazia Hassan, Zoheb Hassan');
+  assert.equal(store.getReel('MID_SECOND')?.status, 'done');
+  assert.equal(log.records.some((record) => record.msg === 'reel songs reused'), true);
+});
+
+test('a reel that names no songs is remembered too', async () => {
+  const { sent, recognition, deliver } = setup({ recognition: recognised() });
+  await deliver(REEL);
+  await deliver(resent('MID_SECOND'));
+  assert.equal(recognition.calls.length, 1);
+  assert.deepEqual(sent.map(({ text }) => text), [REPLIES.noSongs, REPLIES.noSongs]);
+});
+
+test('a reel that could not be read is tried again the next time it is sent', async () => {
+  const { store, sent, recognition, deliver } = setup({
+    recognition: { ok: false, stage: 'download', reason: 'blocked', detail: 'throttled' },
+  });
+  await deliver(REEL);
+  assert.equal(store.getReelSongs('SHORTCODE01'), null);
+  recognition.next = recognised(song('Khushi', 'Nazia Hassan'));
+  await deliver(resent('MID_SECOND'));
+  assert.equal(recognition.calls.length, 2);
+  assert.equal(sent[1]?.text, 'Snagged: Khushi by Nazia Hassan, Zoheb Hassan');
+});
+
 test('the webhook is acknowledged before the reel is processed', async () => {
   const { app, pipeline, sent } = setup();
   const response = await app.request('/webhook/instagram', {

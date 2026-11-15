@@ -1,0 +1,40 @@
+{
+  "tracks": {
+    "href": "https://api.spotify.com/v1/search?offset=0&limit=10&query=khushi&type=track",
+    "limit": 10,
+    "next": null,
+    "offset": 0,
+    "previous": null,
+    "total": 3,
+    "items": [
+      {
+        "album": { "album_type": "album", "id": "ALBUM0000000000000001", "name": "Young Tarang", "release_date": "1983" },
+        "artists": [
+          { "id": "ARTIST000000000000001", "name": "Nazia Hassan", "type": "artist", "uri": "spotify:artist:ARTIST000000000000001" },
+          { "id": "ARTIST000000000000002", "name": "Zoheb Hassan", "type": "artist", "uri": "spotify:artist:ARTIST000000000000002" }
+        ],
+        "disc_number": 1,
+        "duration_ms": 251000,
+        "explicit": false,
+        "external_ids": { "isrc": "XX0000000001" },
+        "external_urls": { "spotify": "https://open.spotify.com/track/TRACK0000000000000001" },
+        "href": "https://api.spotify.com/v1/tracks/TRACK0000000000000001",
+        "id": "TRACK0000000000000001",
+        "is_local": false,
+        "is_playable": true,
+        "name": "Khushi",
+        "track_number": 4,
+        "type": "track",
+        "uri": "spotify:track:TRACK0000000000000001"
+      },
+      {
+        "artists": [{ "id": "ARTIST000000000000003", "name": "Someone Else", "type": "artist" }],
+        "id": "TRACK0000000000000002",
+        "name": "Khushi (From \"A Film\")",
+        "type": "track",
+        "uri": "spotify:track:TRACK0000000000000002"
+      },
+      { "id": "EPISODE00000000000001", "name": "Khushi", "type": "episode", "uri": "spotify:episode:EPISODE00000000000001" }
+    ]
+  }
+}

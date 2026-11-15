@@ -1,0 +1,33 @@
+{
+  "name": "songsnag",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SongSnag: DM a reel, get the song added to your playlist.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --watch src/server.ts",
+    "start": "node --env-file-if-exists=.env src/server.ts",
+    "tunnel": "cloudflared tunnel --url http://localhost:3000",
+    "ig:subscribe": "node --env-file-if-exists=.env scripts/ig-subscribe.ts",
+    "reel:fetch": "node scripts/reel-fetch.ts",
+    "reel:recognize": "node --env-file-if-exists=.env scripts/reel-recognize.ts",
+    "user:delete": "node --env-file-if-exists=.env scripts/user-delete.ts",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
+    "@hono/node-server": "^2.1.8",
+    "better-sqlite3": "^13.2.0",
+    "hono": "^4.13.18",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}

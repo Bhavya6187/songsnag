@@ -1,0 +1,19 @@
+node_modules/
+.env
+.env.*
+!.env.example
+
+# Raw webhook payloads captured in local dev. They contain real Instagram
+# user IDs and signed CDN URLs, so they never go in git.
+captures/
+
+# Claude's working documents, such as handoffs between sessions. Local only.
+claude_docs/
+
+# SQLite data
+data/
+*.db
+*.db-wal
+*.db-shm
+
+.DS_Store

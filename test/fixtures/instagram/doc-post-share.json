@@ -1,0 +1,29 @@
+{
+  "object": "instagram",
+  "entry": [
+    {
+      "time": 1761287298065,
+      "id": "17841400000000001",
+      "messaging": [
+        {
+          "sender": { "id": "1234567890123456" },
+          "recipient": { "id": "17841400000000001" },
+          "timestamp": 1761287294014,
+          "message": {
+            "mid": "MID_DOC_POST_SHARE",
+            "attachments": [
+              {
+                "type": "ig_post",
+                "payload": {
+                  "ig_post_media_id": "18139494541428835",
+                  "title": "A photo post",
+                  "url": "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=18139494541428835&signature=EXAMPLE"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

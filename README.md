@@ -44,6 +44,10 @@ missing.
    playlist called "SongSnag" in their account, stores their tokens encrypted,
    and processes the reels that were waiting.
 3. The reel is downloaded and read (see "Recognising the songs in a reel").
+   The songs it names are kept in the database by the reel's shortcode
+   (table `reel_songs`), so the same reel sent again, by anyone, skips this
+   step. Only a successful read is kept, including one that found no songs.
+   To have a reel read afresh, delete its row.
 4. Each song is searched on Spotify and added unless it is already in the
    playlist. All new songs from one reel go in one request.
 5. The sender gets one DM listing what was added, what was already there and

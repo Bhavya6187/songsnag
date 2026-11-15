@@ -6,7 +6,8 @@ import { hashToken, randomToken, type TokenCipher } from './crypto.ts';
 /**
  * SQLite storage: who has linked Spotify, the one-time links, and one row per
  * message SongSnag has acted on (which is also what makes webhook retries
- * harmless).
+ * harmless). It also remembers the songs each reel names, so a reel that is
+ * sent again, by anyone, is not downloaded and read a second time.
  */
 
 const SCHEMA = `
@@ -39,6 +40,11 @@ CREATE TABLE IF NOT EXISTS reels (
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS reels_by_igsid_status ON reels (igsid, status);
+CREATE TABLE IF NOT EXISTS reel_songs (
+  shortcode  TEXT PRIMARY KEY,
+  songs      TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
 `;
 
 export type ReelStatus =
@@ -75,6 +81,9 @@ export type User = {
   /** Spotify refused the refresh token; the person has to link again. */
   needsRelink: boolean;
 };
+
+/** A song a reel names, as kept in `reel_songs`. */
+export type ReelSong = { title: string; artist: string | null };
 
 export type Store = ReturnType<typeof openStore>;
 
@@ -149,6 +158,26 @@ export function openStore(path: string, cipher: TokenCipher, now: () => number =
         .prepare(`SELECT * FROM reels WHERE status IN ('queued', 'processing') ORDER BY created_at`)
         .all() as Record<string, unknown>[];
       return rows.map(toReel);
+    },
+
+    /**
+     * The songs a reel was found to name, by the shortcode in its link, or null
+     * if the reel has not been read yet. An empty list is a real answer: the
+     * reel was read and names nothing.
+     */
+    getReelSongs(shortcode: string): ReelSong[] | null {
+      const row = db.prepare('SELECT songs FROM reel_songs WHERE shortcode = ?').get(shortcode) as
+        | { songs: string }
+        | undefined;
+      return row ? (JSON.parse(row.songs) as ReelSong[]) : null;
+    },
+
+    /** Not tied to a person, so deleting a person leaves it in place. */
+    saveReelSongs(shortcode: string, songs: ReelSong[]): void {
+      db.prepare(
+        `INSERT INTO reel_songs (shortcode, songs, created_at) VALUES (?, ?, ?)
+         ON CONFLICT (shortcode) DO UPDATE SET songs = excluded.songs, created_at = excluded.created_at`,
+      ).run(shortcode, JSON.stringify(songs.map(({ title, artist }) => ({ title, artist }))), now());
     },
 
     getUser(igsid: string): User | null {

@@ -105,6 +105,30 @@ export async function extractAudio(
   return path;
 }
 
+/**
+ * Writes one stretch of the reel's audio as a mono 44.1 kHz MP3 for audio
+ * fingerprinting, which needs better sound than speech-to-text does.
+ */
+export async function extractAudioClip(
+  videoPath: string,
+  path: string,
+  clip: { startSeconds: number; lengthSeconds: number },
+  run: RunTool = runTool,
+): Promise<string> {
+  const result = await run('ffmpeg', [
+    '-nostdin', '-loglevel', 'error', '-y',
+    '-ss', clip.startSeconds.toFixed(2),
+    '-t', clip.lengthSeconds.toFixed(2),
+    '-i', videoPath,
+    '-vn', '-ac', '1', '-ar', '44100', '-b:a', '96k',
+    path,
+  ]);
+  if (result.exitCode !== 0) {
+    throw new MediaError(`could not cut an audio clip: ${lastLine(result.stderr)}`);
+  }
+  return path;
+}
+
 function lastLine(text: string): string {
   return text.trim().split('\n').at(-1)?.slice(0, 300) ?? '';
 }

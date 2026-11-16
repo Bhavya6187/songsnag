@@ -17,7 +17,7 @@ export type SiteConfig = {
 export type SitePage = 'home' | 'privacy' | 'terms' | 'data-deletion';
 
 /** Shown on the legal pages. Change it whenever their wording changes. */
-const LAST_UPDATED = '14 November 2026';
+const LAST_UPDATED = '15 November 2026';
 
 const DELETION_DAYS = 30;
 
@@ -214,12 +214,13 @@ function privacy(site: SiteConfig): string {
 <p>This website uses no cookies, analytics or advertising trackers.</p>
 
 <h2>How we use it</h2>
-<p>Only to run the service: to find the songs named in a reel you send, add them to your playlist, reply to you, and keep the service working. We do not use your information for advertising or profiling, and we do not sell it.</p>
+<p>Only to run the service: to find the songs in a reel you send, add them to your playlist, reply to you, and keep the service working. We do not use your information for advertising or profiling, and we do not sell it.</p>
 
 <h2>Who it is shared with</h2>
 <ul>
 <li><strong>Anthropic</strong>, whose Claude model reads the reel’s caption, still images from its video and a transcript of its speech to find the songs it names. We do not send it your user ID.</li>
 <li><strong>OpenAI</strong>, whose transcription service turns the speech in the reel’s audio into text. We send it the reel’s audio and caption, not your user ID.</li>
+<li><strong>AudD</strong>, whose music recognition service identifies the music playing in a reel when the reel does not name a song. We send it short clips of the reel’s audio, not your user ID.</li>
 <li><strong>Spotify</strong>, to find the track and add it to your playlist.</li>
 <li><strong>Meta</strong>, to deliver our replies to you through Instagram messaging.</li>
 <li><strong>Our hosting provider</strong>, which runs the server and stores its database.</li>
@@ -262,7 +263,7 @@ function terms(site: SiteConfig): string {
 
 <h2>What to expect</h2>
 <ul>
-<li>Matches can be wrong or missing, and a song that plays without being named will not be found. SongSnag tells you which tracks it added so you can check.</li>
+<li>Matches can be wrong or missing, and a song that only plays in the reel, without being named, may be missed or misidentified. SongSnag tells you which tracks it added so you can check.</li>
 <li>The service is provided as it is, with no guarantee that it will be available, accurate or free of errors.</li>
 <li>It may change, pause or shut down at any time, and access may be withdrawn from anyone at any time.</li>
 </ul>

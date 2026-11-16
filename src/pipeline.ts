@@ -29,8 +29,8 @@ const REPLY_WINDOW_MS = 23 * 60 * 60 * 1000;
 const EXPIRY_MARGIN_MS = 60 * 1000;
 
 export type SongOutcome =
-  | { song: { title: string; artist: string | null }; result: 'added' | 'already'; track: Track; artistUnconfirmed: boolean }
-  | { song: { title: string; artist: string | null }; result: 'not-found' };
+  | { song: ReelSong; result: 'added' | 'already'; track: Track; artistUnconfirmed: boolean }
+  | { song: ReelSong; result: 'not-found' };
 
 export type PipelineDeps = {
   store: Store;
@@ -40,6 +40,8 @@ export type PipelineDeps = {
   recognize: (input: RecognizeInput) => Promise<Recognition>;
   /** Public base URL of this server, no trailing slash. */
   baseUrl: string;
+  /** Whether reels that name no song are fingerprinted. Only changes the wording of the "no songs" DM. */
+  fingerprinting?: boolean;
   now?: () => number;
 };
 
@@ -58,6 +60,8 @@ export const REPLIES = {
   reelFailed: 'Something went wrong on my side while reading that reel. Please send it again in a few minutes.',
   noSongs:
     "I couldn't find a song named in that reel. I read the caption, the text on screen and what is said, so a song that only plays in the background is one I miss.",
+  noSongsHeard:
+    "I couldn't find a song in that reel. Nothing is named in the caption, on screen or in what is said, and I didn't recognise the music playing in it.",
   notInvited:
     "Spotify wouldn't let me add to your playlist. Ask whoever invited you to check that your Spotify account is on the SongSnag invite list.",
   spotifyFailed: "Spotify isn't answering me right now. Please send the reel again in a few minutes.",
@@ -181,16 +185,28 @@ export function createPipeline(deps: PipelineDeps) {
       log.info('reel recognised', {
         mid,
         songs: recognition.songs.length,
+        heard: recognition.heard.length,
         used: recognition.used,
         notes: recognition.notes,
         usage: recognition.usage ?? null,
       });
-      songs = recognition.songs.map(({ title, artist }) => ({ title, artist }));
-      if (shortcode !== null) store.saveReelSongs(shortcode, songs);
+      songs =
+        recognition.songs.length > 0
+          ? recognition.songs.map(({ title, artist }) => ({ title, artist }))
+          : recognition.heard.map(({ title, artist, track }) => ({
+              title,
+              artist,
+              heard: true as const,
+              ...(track ? { track } : {}),
+            }));
+      // An empty answer is not kept when fingerprinting broke down part-way:
+      // the next send should listen again.
+      const final = songs.length > 0 || !recognition.fingerprintFailed;
+      if (shortcode !== null && final) store.saveReelSongs(shortcode, songs);
     }
     if (songs.length === 0) {
       store.setReelStatus(mid, 'done', { matched: [] });
-      return reply(igsid, REPLIES.noSongs, mid);
+      return reply(igsid, deps.fingerprinting ? REPLIES.noSongsHeard : REPLIES.noSongs, mid);
     }
 
     const inPlaylist = await session.call((token) => spotify.playlistUris(token, user.playlistId));
@@ -200,6 +216,13 @@ export function createPipeline(deps: PipelineDeps) {
     const toAdd: string[] = [];
     for (const song of songs) {
       let outcome: SongOutcome = { song, result: 'not-found' };
+      // A fingerprinted song can come with its Spotify track, which is added as it is.
+      if (song.track) {
+        const known = inPlaylist.value.has(song.track.uri) || toAdd.includes(song.track.uri);
+        if (!known) toAdd.push(song.track.uri);
+        outcomes.push({ song, result: known ? 'already' : 'added', track: song.track, artistUnconfirmed: false });
+        continue;
+      }
       for (const query of searchQueries(song)) {
         const results = await session.call((token) => spotify.searchTracks(token, query));
         if (!results.ok) return spotifyFail(results);
@@ -291,7 +314,8 @@ export function createPipeline(deps: PipelineDeps) {
 
 /**
  * The DM for a processed reel. Added songs are shown with the track and artist
- * names Spotify has, not the reel's, so a wrong match is visible.
+ * names Spotify has, not the reel's, so a wrong match is visible. Songs that
+ * were identified from the music, not named, are marked "heard in the reel".
  */
 export function formatReply(outcomes: SongOutcome[]): string {
   const describe = (track: Track) => (track.artists.length > 0 ? `${track.name} by ${track.artists.join(', ')}` : track.name);
@@ -301,8 +325,11 @@ export function formatReply(outcomes: SongOutcome[]): string {
   const added = withResult('added');
   const already = withResult('already');
   const missing = outcomes.filter((outcome) => outcome.result === 'not-found');
+  const heard = (song: ReelSong) => (song.heard ? ' (heard in the reel)' : '');
   const line = (outcome: Matched) =>
-    describe(outcome.track) + (outcome.artistUnconfirmed ? ' (the reel gave no artist, so check this one)' : '');
+    describe(outcome.track) +
+    heard(outcome.song) +
+    (outcome.artistUnconfirmed ? ' (the reel gave no artist, so check this one)' : '');
 
   if (added.length === 1 && outcomes.length === 1) return `Snagged: ${line(added[0]!)}`;
 
@@ -314,7 +341,7 @@ export function formatReply(outcomes: SongOutcome[]): string {
   section('Already in your playlist:', already.map(line));
   section(
     "Couldn't find on Spotify:",
-    missing.map(({ song }) => (song.artist === null ? song.title : `${song.title} by ${song.artist}`)),
+    missing.map(({ song }) => (song.artist === null ? song.title : `${song.title} by ${song.artist}`) + heard(song)),
   );
   return sections.join('\n\n');
 }

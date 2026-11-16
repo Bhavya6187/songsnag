@@ -36,6 +36,8 @@ export type ServiceConfig = {
   anthropicApiKey: string;
   /** Without it, the speech in a reel is not read. */
   openaiApiKey: string | null;
+  /** Without it, a reel that names no song is not fingerprinted. */
+  auddApiKey: string | null;
   /** The SQLite file. */
   databasePath: string;
 };
@@ -111,6 +113,7 @@ export function loadConfig(env: Env = process.env): Config {
       tokenEncryptionKey,
       anthropicApiKey: value('ANTHROPIC_API_KEY'),
       openaiApiKey: read(env, 'OPENAI_API_KEY'),
+      auddApiKey: read(env, 'AUDD_API_KEY'),
       databasePath: read(env, 'DATABASE_PATH') ?? 'data/songsnag.db',
     };
   }

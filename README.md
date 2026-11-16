@@ -47,9 +47,13 @@ missing.
    The songs it names are kept in the database by the reel's shortcode
    (table `reel_songs`), so the same reel sent again, by anyone, skips this
    step. Only a successful read is kept, including one that found no songs.
-   To have a reel read afresh, delete its row.
+   To have a reel read afresh, delete its row. A reel that names no song is
+   listened to instead, when `AUDD_API_KEY` is set (see "When a reel names no
+   song").
 4. Each song is searched on Spotify and added unless it is already in the
-   playlist. All new songs from one reel go in one request.
+   playlist. A song that was heard, not named, usually comes with its Spotify
+   track and is added by it without a search. All new songs from one reel go
+   in one request.
 5. The sender gets one DM listing what was added, what was already there and
    what could not be found.
 
@@ -88,6 +92,13 @@ Already in your playlist:
 
 Couldn't find on Spotify:
 • Track Four by Artist
+```
+
+A song that was identified from the music playing, not named in the reel, is
+marked, so a piece of background music that got added is easy to spot:
+
+```
+Snagged: Tadke Tadke by AFTERAll (heard in the reel)
 ```
 
 Every failure gets a short DM too: a reel that is private or gone, a reel that
@@ -292,12 +303,46 @@ reel itself and reads three things from it:
 | Speech | ffmpeg extracts the audio; OpenAI's `gpt-transcribe` turns it into text |
 
 Claude (`claude-opus-5-5`) then gets the caption, the frames and the
-transcript in one request and returns every song the reel names. Nothing
-listens to the music itself: a song that plays without being named in any of
-the three sources is not found.
+transcript in one request and returns every song the reel names. This step
+does not listen to the music: a song that plays without being named in any of
+the three sources is left to the backup below.
+
+### When a reel names no song
+
+If that step succeeds and returns no songs, the reel has audio, and
+`AUDD_API_KEY` is set, SongSnag identifies the music playing in the reel with
+[AudD](https://audd.io)'s audio fingerprinting (`src/recognize/fingerprint.ts`).
+A reel that names even one song is never sent to AudD, and neither is a named
+song that Spotify does not have. Without the key this step does not exist and
+the reel gets the "no songs" reply.
+
+- One AudD request returns at most one song, so the reel is sampled: it is
+  divided into three equal parts and a clip from the middle of each is sent,
+  the whole part or 12 seconds, whichever is shorter. A reel under 8 seconds
+  is sent whole in one request. **A reel never costs more than three
+  requests.**
+- The clips are cut by ffmpeg as mono 44.1 kHz 96 kbps MP3. The 16 kHz audio
+  made for speech-to-text is not used for this.
+- Known limits: a reel with more than three songs yields at most three, and
+  on a long reel a song that falls between the clips is missed. Music under
+  someone talking is often not recognised.
+- AudD is asked for the Spotify track (`return=spotify`). When it supplies
+  one, that track is added as it is; when it does not, the song is searched
+  on Spotify by AudD's title and artist like a named song.
+- An AudD failure does not fail the reel. It is listed in `notes` on the
+  `reel recognised` log line (whose `used.fingerprint` is the number of
+  requests sent), and the reel ends as "no songs". That empty answer is not
+  kept in `reel_songs`, so sending the reel again listens again. An invalid
+  token or a used-up limit stops after the first request.
+- Reels read before the key was set, and found to name nothing, stay
+  remembered as empty. Delete their `reel_songs` rows to have them listened to.
+
+AudD's 300 free requests are marked as not for production use; the paid plan
+is $5 a month for 1,000 requests, then $0.005 each.
 
 The code is in `src/reel/` (download, frames, audio) and `src/recognize/`
-(transcription, song extraction, and `reel.ts`, which runs the whole step).
+(transcription, song extraction, fingerprinting, and `reel.ts`, which runs the
+whole step).
 The scripts below run it on its own, without the webhook or Spotify.
 
 ```sh
@@ -307,7 +352,8 @@ npm run reel:recognize -- https://www.instagram.com/reel/<shortcode>/ "caption t
 ```
 
 `reel:recognize` needs `ANTHROPIC_API_KEY`, and `OPENAI_API_KEY` for speech;
-without the OpenAI key it reads the caption and frames only. Each run makes
+without the OpenAI key it reads the caption and frames only. With
+`AUDD_API_KEY` it also fingerprints a reel that names no song. Each run makes
 paid API calls.
 
 Downloads use [yt-dlp](https://github.com/yt-dlp/yt-dlp) anonymously (no

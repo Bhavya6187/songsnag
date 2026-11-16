@@ -32,6 +32,7 @@ serve({ fetch: app.fetch, port: config.port }, (info) => {
     port: info.port,
     captureDir: config.captureDir,
     service: service !== null,
+    fingerprinting: Boolean(config.service?.auddApiKey),
   });
   service?.pipeline.recover();
 });
@@ -49,10 +50,12 @@ function startService(settings: ServiceConfig): Service {
     spotify,
     log,
     baseUrl: settings.baseUrl,
+    fingerprinting: settings.auddApiKey !== null,
     send: createSender({ accountId: settings.igAccountId, accessToken: settings.igAccessToken }),
     recognize: (reel) =>
       recognizeReel(reel, {
         openaiApiKey: settings.openaiApiKey,
+        auddApiKey: settings.auddApiKey,
         steps: { extractSongs: (evidence) => extractSongs(evidence, anthropic) },
       }),
   });

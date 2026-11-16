@@ -2,6 +2,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
 import { hashToken, randomToken, type TokenCipher } from './crypto.ts';
+import type { Track } from './spotify/client.ts';
 
 /**
  * SQLite storage: who has linked Spotify, the one-time links, and one row per
@@ -82,8 +83,13 @@ export type User = {
   needsRelink: boolean;
 };
 
-/** A song a reel names, as kept in `reel_songs`. */
-export type ReelSong = { title: string; artist: string | null };
+/**
+ * A song found in a reel, as kept in `reel_songs`. `heard` marks one that was
+ * identified from the music playing instead of being named, and `track` is
+ * its Spotify entry when the fingerprinting service supplied one. Rows saved
+ * before fingerprinting existed have neither field.
+ */
+export type ReelSong = { title: string; artist: string | null; heard?: true; track?: Track };
 
 export type Store = ReturnType<typeof openStore>;
 
@@ -177,7 +183,18 @@ export function openStore(path: string, cipher: TokenCipher, now: () => number =
       db.prepare(
         `INSERT INTO reel_songs (shortcode, songs, created_at) VALUES (?, ?, ?)
          ON CONFLICT (shortcode) DO UPDATE SET songs = excluded.songs, created_at = excluded.created_at`,
-      ).run(shortcode, JSON.stringify(songs.map(({ title, artist }) => ({ title, artist }))), now());
+      ).run(
+        shortcode,
+        JSON.stringify(
+          songs.map(({ title, artist, heard, track }) => ({
+            title,
+            artist,
+            ...(heard ? { heard } : {}),
+            ...(track ? { track: { uri: track.uri, name: track.name, artists: track.artists } } : {}),
+          })),
+        ),
+        now(),
+      );
     },
 
     getUser(igsid: string): User | null {

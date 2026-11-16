@@ -1,0 +1,17 @@
+{
+  "status": "success",
+  "result": {
+    "artist": "Afterall",
+    "title": "Tadke Tadke",
+    "album": "Tadke Tadke",
+    "release_date": "2025-08-07",
+    "label": "AFERAll",
+    "timecode": "00:33",
+    "song_link": "https://lis.tn/TadkeTadke",
+    "spotify": {
+      "uri": "spotify:track:0ptmjtm7qOmGAz1ELQR5Rv",
+      "name": "Tadke Tadke",
+      "artists": [{ "name": "AFTERAll" }]
+    }
+  }
+}

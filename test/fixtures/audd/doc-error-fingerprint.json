@@ -1,0 +1,7 @@
+{
+  "status": "error",
+  "error": {
+    "error_code": 300,
+    "error_message": "Recognition failed: a problem with fingerprints creating. Keep in mind that you should send only audio files or links to audio files."
+  }
+}

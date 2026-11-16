@@ -4,7 +4,9 @@
  *   npm run reel:recognize -- https://www.instagram.com/reel/<shortcode>/ ["caption text"]
  *
  * Needs yt-dlp and ffmpeg installed, ANTHROPIC_API_KEY, and OPENAI_API_KEY for
- * speech. Each run makes paid API calls (a fraction of a cent to a few cents).
+ * speech. With AUDD_API_KEY, a reel that names no song is fingerprinted (up to
+ * three AudD requests). Each run makes paid API calls (a fraction of a cent to
+ * a few cents).
  */
 import { recognizeReel } from '../src/recognize/reel.ts';
 
@@ -20,7 +22,10 @@ if (!process.env.ANTHROPIC_API_KEY?.trim()) {
 
 const result = await recognizeReel(
   { url, caption: caption ?? null },
-  { openaiApiKey: process.env.OPENAI_API_KEY?.trim() || null },
+  {
+    openaiApiKey: process.env.OPENAI_API_KEY?.trim() || null,
+    auddApiKey: process.env.AUDD_API_KEY?.trim() || null,
+  },
 );
 
 if (!result.ok) {
@@ -29,7 +34,7 @@ if (!result.ok) {
 }
 
 console.log(
-  `Read: caption ${result.used.caption ? 'yes' : 'no'}, ${result.used.frames} frames, speech ${result.used.transcript ? 'yes' : 'no'}`,
+  `Read: caption ${result.used.caption ? 'yes' : 'no'}, ${result.used.frames} frames, speech ${result.used.transcript ? 'yes' : 'no'}, ${result.used.fingerprint} AudD requests`,
 );
 if (result.usage) {
   console.log(`Claude (${result.usage.model}): ${result.usage.inputTokens} input tokens, ${result.usage.outputTokens} output tokens`);
@@ -39,5 +44,10 @@ if (result.songs.length === 0) console.log('No songs named in this reel.');
 for (const [index, song] of result.songs.entries()) {
   console.log(
     `${index + 1}. ${song.title} by ${song.artist ?? '(artist not given)'}  [${song.sources.join(', ')}; ${song.confidence}]`,
+  );
+}
+for (const [index, song] of result.heard.entries()) {
+  console.log(
+    `${index + 1}. ${song.title} by ${song.artist ?? '(artist not given)'}  [heard in the reel; ${song.track?.uri ?? 'no Spotify track from AudD'}]`,
   );
 }

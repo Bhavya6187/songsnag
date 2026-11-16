@@ -50,6 +50,11 @@ export function json(body: unknown, status = 200, headers: Record<string, string
   });
 }
 
+/** Reads an AudD response fixture. */
+export function auddFixture(name: string): unknown {
+  return JSON.parse(readFileSync(new URL(`./fixtures/audd/${name}.json`, import.meta.url), 'utf8'));
+}
+
 /** Reads a Spotify response fixture. */
 export function spotifyFixture(name: string): unknown {
   return JSON.parse(readFileSync(new URL(`./fixtures/spotify/${name}.json`, import.meta.url), 'utf8'));

@@ -154,6 +154,7 @@ test('a complete environment turns the service on', () => {
   assert.partialDeepStrictEqual(config.service, {
     baseUrl: 'https://api.songsnag.com',
     openaiApiKey: null,
+    auddApiKey: null,
     databasePath: 'data/songsnag.db',
   });
   assert.equal(config.service?.tokenEncryptionKey.equals(KEY), true);

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { downloadReel, type DownloadFailure } from '../reel/download.ts';
 import { extractAudio, extractFrames, MediaError, probeVideo } from '../reel/media.ts';
+import { fingerprintReel, type HeardSong } from './fingerprint.ts';
 import { extractSongs, type Song, type SongExtraction } from './songs.ts';
 import { transcribe } from './transcribe.ts';
 
@@ -13,16 +14,25 @@ import { transcribe } from './transcribe.ts';
  * The caption and frames are enough to proceed, so a failed or unavailable
  * transcript is recorded in `notes` rather than failing the reel. Everything
  * downloaded or cut from the reel is deleted before this returns.
+ *
+ * When the reel names no song at all, and an AudD key is set, the music
+ * playing in it is identified by audio fingerprinting instead. That is a
+ * backup only: a reel that names songs is never fingerprinted.
  */
 
 export type Recognition =
   | {
       ok: true;
+      /** The songs the reel names. */
       songs: Song[];
-      /** Which sources were actually read. */
-      used: { caption: boolean; frames: number; transcript: boolean };
-      /** Sources that were skipped, and why. */
+      /** Songs identified from the music playing, filled only when `songs` is empty. */
+      heard: HeardSong[];
+      /** Which sources were actually read. `fingerprint` is the number of AudD requests sent. */
+      used: { caption: boolean; frames: number; transcript: boolean; fingerprint: number };
+      /** Sources that were skipped or failed, and why. */
       notes: string[];
+      /** Fingerprinting ran and part of it failed, so an empty answer may not be the final one. */
+      fingerprintFailed: boolean;
       /** Token counts for the Claude request, when one was made. */
       usage?: { inputTokens: number; outputTokens: number; model: string };
     }
@@ -40,6 +50,8 @@ export type RecognizeInput = {
 export type RecognizeOptions = {
   /** OpenAI API key for speech-to-text. Without one, speech is skipped. */
   openaiApiKey: string | null;
+  /** AudD API key for fingerprinting a reel that names no song. Without one, that step is skipped. */
+  auddApiKey?: string | null;
   /** Replaceable steps, for tests. */
   steps?: Partial<Steps>;
 };
@@ -51,9 +63,18 @@ type Steps = {
   extractAudio: typeof extractAudio;
   transcribe: typeof transcribe;
   extractSongs: typeof extractSongs;
+  fingerprintReel: typeof fingerprintReel;
 };
 
-const defaultSteps: Steps = { downloadReel, probeVideo, extractFrames, extractAudio, transcribe, extractSongs };
+const defaultSteps: Steps = {
+  downloadReel,
+  probeVideo,
+  extractFrames,
+  extractAudio,
+  transcribe,
+  extractSongs,
+  fingerprintReel,
+};
 
 export async function recognizeReel(input: RecognizeInput, options: RecognizeOptions): Promise<Recognition> {
   const steps = { ...defaultSteps, ...options.steps };
@@ -68,8 +89,9 @@ export async function recognizeReel(input: RecognizeInput, options: RecognizeOpt
 
     let frames: { jpeg: Buffer; atSeconds: number }[] = [];
     let transcript: string | null = null;
+    let video: { durationSeconds: number; hasAudio: boolean };
     try {
-      const video = await steps.probeVideo(download.path);
+      video = await steps.probeVideo(download.path);
       const framePaths = await steps.extractFrames(download.path, workDir, video.durationSeconds);
       frames = (
         await Promise.all(
@@ -103,15 +125,38 @@ export async function recognizeReel(input: RecognizeInput, options: RecognizeOpt
     if (!extraction.ok) {
       return { ok: false, stage: 'extract', reason: extraction.reason, detail: extraction.detail };
     }
+
+    let heard: HeardSong[] = [];
+    let fingerprintRequests = 0;
+    let fingerprintFailed = false;
+    const auddApiKey = options.auddApiKey ?? null;
+    if (extraction.songs.length === 0 && video.hasAudio && auddApiKey !== null) {
+      try {
+        const fingerprint = await steps.fingerprintReel(download.path, workDir, video.durationSeconds, {
+          apiKey: auddApiKey,
+        });
+        heard = fingerprint.songs;
+        fingerprintRequests = fingerprint.requests;
+        fingerprintFailed = fingerprint.failures.length > 0;
+        for (const failure of fingerprint.failures) notes.push(`fingerprinting failed: ${failure}`);
+      } catch (error) {
+        fingerprintFailed = true;
+        notes.push(`fingerprinting failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+
     return {
       ok: true,
       songs: extraction.songs,
+      heard,
       used: {
         caption: Boolean(input.caption?.trim()),
         frames: frames.length,
         transcript: Boolean(transcript?.trim()),
+        fingerprint: fingerprintRequests,
       },
       notes,
+      fingerprintFailed,
       ...(extraction.usage ? { usage: extraction.usage } : {}),
     };
   } finally {

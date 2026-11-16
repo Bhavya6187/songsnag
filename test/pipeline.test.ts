@@ -7,6 +7,7 @@ import { openStore } from '../src/db.ts';
 import { createSender, splitMessage } from '../src/instagram/send.ts';
 import { parseWebhook } from '../src/instagram/webhook.ts';
 import { createPipeline, formatReply, REPLIES } from '../src/pipeline.ts';
+import type { HeardSong } from '../src/recognize/fingerprint.ts';
 import type { Recognition } from '../src/recognize/reel.ts';
 import { createSpotify } from '../src/spotify/client.ts';
 import { fakeFetch, fakeSpotifyApi, instagramFixture, json, recordingLogger, sign, type CatalogTrack } from './helpers.ts';
@@ -28,11 +29,24 @@ const song = (title: string, artist: string | null) => ({
 const recognised = (...songs: ReturnType<typeof song>[]): Recognition => ({
   ok: true,
   songs,
-  used: { caption: true, frames: 3, transcript: false },
+  heard: [],
+  used: { caption: true, frames: 3, transcript: false, fingerprint: 0 },
   notes: [],
+  fingerprintFailed: false,
+});
+/** A reel that names nothing, with what fingerprinting heard in it. */
+const heardIn = (heard: HeardSong[], fingerprintFailed = false): Recognition => ({
+  ok: true,
+  songs: [],
+  heard,
+  used: { caption: true, frames: 3, transcript: true, fingerprint: 3 },
+  notes: fingerprintFailed ? ['fingerprinting failed: AudD error 901: limit reached'] : [],
+  fingerprintFailed,
 });
 
-function setup(options: { catalog?: CatalogTrack[]; playlist?: string[]; recognition?: Recognition; linked?: boolean } = {}) {
+function setup(
+  options: { catalog?: CatalogTrack[]; playlist?: string[]; recognition?: Recognition; linked?: boolean; fingerprinting?: boolean } = {},
+) {
   const clock = { now: 1_800_000_000_000 };
   const now = () => clock.now;
   const log = recordingLogger();
@@ -53,6 +67,7 @@ function setup(options: { catalog?: CatalogTrack[]; playlist?: string[]; recogni
     log,
     now,
     baseUrl: BASE_URL,
+    fingerprinting: options.fingerprinting,
     send: async (igsid, text) => {
       sent.push({ igsid, text });
       return { ok: true };
@@ -211,6 +226,72 @@ test('a reel that names no song gets a plain explanation and touches nothing', a
   assert.deepEqual(sent, [{ igsid: IGSID, text: REPLIES.noSongs }]);
   assert.deepEqual(api.state.playlist, []);
   assert.equal(store.getReel(REEL_MID)?.status, 'done');
+});
+
+// --- songs heard by fingerprinting -----------------------------------------
+
+const TADKE = { uri: 'spotify:track:0ptmjtm7qOmGAz1ELQR5Rv', name: 'Tadke Tadke', artists: ['AFTERAll'] };
+const searches = (api: ReturnType<typeof setup>['api']) =>
+  api.requests.filter((request) => request.url.pathname === '/v1/search').length;
+
+test('a heard song that came with its Spotify track is added by it, without a search, and marked', async () => {
+  const { api, sent, store, deliver } = setup({
+    recognition: heardIn([{ title: 'Tadke Tadke', artist: 'Afterall', track: TADKE }]),
+  });
+  await deliver(REEL);
+  assert.deepEqual(api.state.playlist, [TADKE.uri]);
+  assert.equal(searches(api), 0);
+  assert.equal(sent[0]?.text, 'Snagged: Tadke Tadke by AFTERAll (heard in the reel)');
+  assert.deepEqual(store.getReelSongs('SHORTCODE01'), [
+    { title: 'Tadke Tadke', artist: 'Afterall', heard: true, track: TADKE },
+  ]);
+});
+
+test('a heard song without a Spotify track is searched for like a named one', async () => {
+  const { api, sent, deliver } = setup({
+    recognition: heardIn([
+      { title: 'Khushi', artist: 'Nazia Hassan', track: null },
+      { title: 'Unreleased', artist: 'Nobody', track: null },
+    ]),
+  });
+  await deliver(REEL);
+  assert.deepEqual(api.state.playlist, ['spotify:track:khushi']);
+  assert.equal(
+    sent[0]?.text,
+    [
+      'Snagged 1 song:\n• Khushi by Nazia Hassan, Zoheb Hassan (heard in the reel)',
+      "Couldn't find on Spotify:\n• Unreleased by Nobody (heard in the reel)",
+    ].join('\n\n'),
+  );
+});
+
+test('a heard song is remembered with its track, so a resend adds nothing twice and searches nothing', async () => {
+  const { api, sent, recognition, deliver } = setup({
+    recognition: heardIn([{ title: 'Tadke Tadke', artist: 'Afterall', track: TADKE }]),
+  });
+  await deliver(REEL);
+  await deliver(resent('MID_SECOND'));
+  assert.equal(recognition.calls.length, 1);
+  assert.equal(searches(api), 0);
+  assert.deepEqual(api.state.playlist, [TADKE.uri]);
+  assert.equal(sent[1]?.text, 'Already in your playlist:\n• Tadke Tadke by AFTERAll (heard in the reel)');
+});
+
+test('with fingerprinting on, a reel with nothing named or recognised says so', async () => {
+  const { sent, store, deliver } = setup({ recognition: heardIn([]), fingerprinting: true });
+  await deliver(REEL);
+  assert.equal(sent[0]?.text, REPLIES.noSongsHeard);
+  assert.deepEqual(store.getReelSongs('SHORTCODE01'), []);
+});
+
+test('an empty answer is not remembered when fingerprinting failed, so a resend listens again', async () => {
+  const { sent, store, recognition, deliver } = setup({ recognition: heardIn([], true), fingerprinting: true });
+  await deliver(REEL);
+  assert.equal(sent[0]?.text, REPLIES.noSongsHeard);
+  assert.equal(store.getReel(REEL_MID)?.status, 'done');
+  assert.equal(store.getReelSongs('SHORTCODE01'), null);
+  await deliver(resent('MID_SECOND'));
+  assert.equal(recognition.calls.length, 2);
 });
 
 test('each way recognition can fail gets its own short DM', async () => {
@@ -461,6 +542,10 @@ test('the reply formats one song, and sections for several', () => {
   assert.equal(
     formatReply([{ song: { title: 'Lost', artist: null }, result: 'not-found' }]),
     "Couldn't find on Spotify:\n• Lost",
+  );
+  assert.equal(
+    formatReply([{ ...added, song: { title: 't', artist: 'a', heard: true } }]),
+    'Snagged: Khushi by Nazia Hassan, Zoheb Hassan (heard in the reel)',
   );
 });
 
